@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections;
+using System.Collections.Generic;
 using System.Net.Sockets;
 using System.Text;
 using System.Threading;
@@ -9,15 +10,15 @@ namespace EjemploServidor
     class Servidor
     {
         private TcpListener serverSocket;
-        private Hashtable connetions;
-        private Hashtable messagge;
+        private List<TcpClient> tcpClients;
+        private List<string> messages;
 
         [Obsolete]
         public Servidor()
         {
-            serverSocket = new TcpListener(8888);
-            connetions = new Hashtable();
-            messagge = new Hashtable();
+            this.serverSocket = new TcpListener(8888);
+            this.messages = new List<string>();
+            this.tcpClients = new List<TcpClient>();
         }
 
         public void Start()
@@ -39,7 +40,7 @@ namespace EjemploServidor
                     TcpClient tcpClient = (TcpClient)a;
                     tcpClient = serverSocket.AcceptTcpClient();
                     Console.WriteLine(" >> Accept connection from client");
-
+                    this.tcpClients.Add(tcpClient);
                     Thread ThreadReadInformation = new Thread(ListenClient);
                     ThreadReadInformation.Start(tcpClient);
 
@@ -62,43 +63,47 @@ namespace EjemploServidor
         {
             TcpClient clientSocket = (TcpClient)a;
             NetworkStream networkStream = clientSocket.GetStream();
-            if (!networkStream.DataAvailable) return;
+
+            if (networkStream == null) return;
 
             byte[] bytesFrom = new byte[10000000];
             networkStream.Read(bytesFrom, 0, clientSocket.ReceiveBufferSize);
             string data = Encoding.UTF8.GetString(bytesFrom);
-            this.connetions.Add(data, clientSocket);
-            string id = data.Substring(data.IndexOf("id"), data.IndexOf("$"));
+            if (data != "")
+                this.messages.Add(data);
             data = data.Substring(0, data.IndexOf("id"));
-            this.messagge.Add(id, data);
             Console.WriteLine("Received >> " + data);
         }
 
         private void SendAllUsers()
         {
-            if (connetions.Count < 0) return;
-            foreach (DictionaryEntry a in this.connetions)
-            {
-                Send(a.Key, a.Value);
-                
-            }
+            if (this.messages.Count < 0) return;
 
+            foreach (var i in this.messages)
+            {
+                foreach (var j in this.tcpClients)
+                {
+                    if (j == null) return;
+                    Send(i, j);
+                }
+
+            }
+            this.messages.Clear();
         }
 
-        private void Send(object a, object o)
+        private void Send(string data, object o)
         {
             TcpClient tcpClient = (TcpClient)o;
             NetworkStream networkStream = tcpClient.GetStream();
 
             if (!networkStream.CanWrite) return;
 
-            string data = (string)a;
             data = data.Substring(0, data.IndexOf("id"));
             Byte[] sendBytes = Encoding.UTF8.GetBytes(data + "$");
             networkStream.Write(sendBytes, 0, sendBytes.Length);
             networkStream.Flush();
+
             Console.WriteLine("Sent >>" + data);
-            string key = (string)a;
         }
 
     }
